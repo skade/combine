@@ -1,6 +1,8 @@
 use std::fmt;
 use std::error::Error as StdError;
 use std::any::Any;
+use std::cell::UnsafeCell;
+use std::collections::VecDeque;
 
 ///Struct which represents a position in a source file
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -566,5 +568,96 @@ impl <I, O, P: ?Sized> Parser for Box<P>
     }
     fn add_error(&mut self, error: &mut ParseError<<Self::Input as Stream>::Item>) {
         (**self).add_error(error)
+    }
+}
+
+pub struct StreamBuffer<'a, I>
+    where I: Iterator + 'a
+        , I::Item: 'a {
+    offset: usize,
+    buffer: &'a SharedStreamBuffer<I>
+}
+
+impl <'a, I> Clone for StreamBuffer<'a, I>
+    where I: Iterator + 'a
+        , I::Item: 'a {
+    fn clone(&self) -> StreamBuffer<'a, I> {
+        StreamBuffer { offset: self.offset, buffer: self.buffer }
+    }
+}
+
+pub struct SharedStreamBuffer<I>
+    where I: Iterator {
+    buffer: UnsafeCell<StreamBufferInner<I>>
+}
+pub struct StreamBufferInner<I>
+    where I: Iterator {
+    offset: usize,
+    iter: I,
+    buffer: VecDeque<I::Item>
+}
+
+impl <I> StreamBufferInner<I>
+    where I: Iterator
+        , I::Item: Clone {
+    fn uncons(&mut self, offset: usize) -> Result<I::Item, Error<I::Item>> {
+        if offset >= self.offset {
+            self.offset += 1;
+            let item = match self.iter.next() {
+                Some(item) => item,
+                None => return Err(Error::end_of_input())
+            };
+            //We want the VecDeque to only keep the last .capacity() elements so we need to remove
+            //an element if it gets to large
+            if self.buffer.len() == self.buffer.capacity() {
+                self.buffer.pop_front();
+            }
+            self.buffer.push_back(item.clone());
+            Ok(item)
+        }
+        else if offset < self.offset - self.buffer.len() {
+            //We have backtracked to far
+            Err(Error::Message("Backtracked to far".into()))
+        }
+        else {
+            Ok(self.buffer[self.buffer.len() - (self.offset - offset)].clone())
+        }
+    }
+}
+
+impl <I> SharedStreamBuffer<I>
+    where I: Iterator
+        , I::Item: Clone {
+    pub fn as_stream(&self) -> StreamBuffer<I> {
+        StreamBuffer { offset: 0, buffer: self }
+    }
+    fn uncons(&self, offset: usize) -> Result<I::Item, Error<I::Item>> {
+        unsafe {
+            (*self.buffer.get()).uncons(offset)
+        }
+    }
+}
+impl <'a, I> StreamBuffer<'a, I>
+    where I: Iterator {
+    pub fn new(iter: I, lookahead: usize) -> SharedStreamBuffer<I> {
+        SharedStreamBuffer {
+            buffer: UnsafeCell::new(StreamBufferInner {
+                offset: 0,
+                iter: iter,
+                buffer: VecDeque::with_capacity(lookahead)
+            })
+        }
+    }
+}
+
+impl <'a, I> Stream for StreamBuffer<'a, I>
+    where I: Iterator + 'a
+        , I::Item: Positioner + 'a {
+    type Item = I::Item;
+
+    fn uncons(mut self) -> Result<(I::Item, StreamBuffer<'a, I>), Error<I::Item>> {
+        let value = try!(self.buffer.uncons(self.offset));
+        self.offset += 1;
+        Ok((value, self))
     }
 }
