@@ -411,6 +411,9 @@ impl <I: Stream> State<I> {
 impl <I, E> State<I>
     where I: RangeStream<Item=E> + Positioner<Position=E::Position>
         , E: Positioner + Clone {
+    
+    ///Removes `size` items from the input returning them as a range.
+    ///Fails if there are fewer items than `size`
     pub fn uncons_range(self, size: usize) -> ParseResult<I, I> {
         let State { mut position, input, .. } = self;
         let result = input.uncons_range(size);
@@ -432,11 +435,13 @@ impl <I, E> State<I>
 }
 
 impl <I: RangeStream> State<I> {
-    pub fn uncons_while<F>(self, mut f: F) -> ParseResult<I, I>
-        where F: FnMut(&I::Item) -> bool {
+
+    ///Removes items from the input while `predicate` returns `true`.
+    pub fn uncons_while<P>(self, mut predicate: P) -> ParseResult<I, I>
+        where P: FnMut(&I::Item) -> bool {
         let State { mut position, input, .. } = self;
         let result = input.uncons_while(|t| {
-            if f(t) { t.update(&mut position); true }
+            if predicate(t) { t.update(&mut position); true }
             else { false }
         });
         match result {
@@ -473,10 +478,16 @@ pub trait Stream : Clone {
 }
 
 pub trait RangeStream: Stream + Positioner {
+    ///Takes `size` elements from the stream
+    ///Fails if the length of the stream is less than `size`.
     fn uncons_range(self, size: usize) -> Result<(Self, Self), Error<Self::Item, Self::Range>>;
 
+    ///Takes items from stream, testing each one with `predicate`
+    ///returns the range of items which passed `predicate`
     fn uncons_while<F>(self, f: F) -> Result<(Self, Self), Error<Self::Item, Self::Range>>
         where F: FnMut(&Self::Item) -> bool;
+    ///Returns the remaining length of `self`.
+    ///The returned length need not be the same as the number of items left in the stream
     fn len(&self) -> usize;
 }
 
