@@ -288,22 +288,20 @@ pub fn not_followed_by<P>(parser: P) -> NotFollowedBy<P>
 
 pub struct Iter<P: Parser> {
     parser: P,
-    input: State<P::Input>,
+    input: Consumed<State<P::Input>>,
     error: Option<Consumed<ParseError<P::Input>>>,
-    consumed: bool,
 }
 
 impl <P: Parser> Iter<P> {
     fn new(parser: P, input: State<P::Input>) -> Iter<P> {
-        Iter { parser: parser, input: input, error: None, consumed: false }
+        Iter { parser: parser, input: Consumed::Empty(input), error: None }
     }
     ///Converts the iterator to a `ParseResult`, returning `Ok` if the parsing so far has be done
     ///without any errors which consumed data.
     pub fn into_result<O>(self, value: O) -> ParseResult<O, P::Input> {
         match self.error {
             Some(err@Consumed::Consumed(_)) => Err(err),
-            _ => if self.consumed { Ok((value, Consumed::Consumed(self.input))) }
-                 else { Ok((value, Consumed::Empty(self.input))) }
+            _ => Ok((value, self.input))
         }
     }
 }
@@ -311,13 +309,9 @@ impl <P: Parser> Iter<P> {
 impl <P: Parser> Iterator for Iter<P> {
     type Item = P::Output;
     fn next(&mut self) -> Option<P::Output> {
-        if self.error.is_some() {
-            return None;
-        }
-        match self.parser.parse_lazy(self.input.clone()) {
+        match self.parser.parse_lazy(self.input.clone().into_inner()) {
             Ok((value, rest)) => {
-                self.consumed = self.consumed || !rest.is_empty();
-                self.input = rest.into_inner();
+                self.input = if !self.input.is_empty() { rest.as_consumed() } else { rest };
                 Some(value)
             }
             Err(err) => {

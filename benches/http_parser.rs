@@ -69,7 +69,7 @@ fn http_parser(b: &mut Bencher) {
               uri:     uri,
               version: version,
         })
-        .parse_state(input)
+        .parse_lazy(input)
     );
 
 
@@ -88,7 +88,7 @@ fn http_parser(b: &mut Bencher) {
                 name: name,
                 value: value,
             })
-            .parse_state(input)
+            .parse_lazy(input)
         });
 
     let mut request = (
