@@ -49,20 +49,20 @@ fn http_parser(b: &mut Bencher) {
     }
 
     // Making a closure, because parser instances cannot be reused
-    let end_of_line = || (satisfy(|c| c == b'\r').skip(satisfy(|c| c == b'\n'))).or(satisfy(|c| c == b'\n'));
+    let end_of_line = || (satisfy(|&c| c == b'\r').skip(satisfy(|&c| c == b'\n'))).or(satisfy(|&c| c == b'\n'));
 
     // Cannot use char() as it requires a char, instead use satisfy and dereference the pointer to
     // the item
     let mut http_version = range(&b"HTTP/"[..])
         // Need a map() here to be able to use FromIterator<u8>
-        .with(take_while1(|c| is_http_version(c)));
+        .with(take_while1(|& &c| is_http_version(c)));
 
     let request_line = parser(|input| (
         // Yet again, dereferencing pointers before checking if it is a token
-        take_while1(|c| is_token(c)),
-        take_while1(|c| is_space(c)),
-        take_while1(|c| is_not_space(c)),
-        take_while1(|c| is_space(c)),
+        take_while1(|& &c| is_token(c)),
+        take_while1(|& &c| is_space(c)),
+        take_while1(|& &c| is_not_space(c)),
+        take_while1(|& &c| is_space(c)),
         &mut http_version,
         ).map(|(method, _, uri, _, version)| Request {
               method:  method,
@@ -75,13 +75,13 @@ fn http_parser(b: &mut Bencher) {
 
     let message_header = parser(|input| {
         let message_header_line = (
-            take_while1(|c| is_horizontal_space(c)),
-            take_while1(|c| c != b'\r' && c != b'\n'),
+            take_while1(|& &c| is_horizontal_space(c)),
+            take_while1(|& &c| c != b'\r' && c != b'\n'),
             end_of_line())
             .map(|(_, line, _)| line);
 
-            (take_while1(|c| is_token(c)),
-            satisfy(|c| c == b':'),
+            (take_while1(|& &c| is_token(c)),
+            satisfy(|&c| c == b':'),
             many1(message_header_line)
             )
             .map(|(name, _, value)| Header {
