@@ -1213,7 +1213,7 @@ pub struct Range<I>(I)
     where I: RangeStream + PartialEq;
 impl <I, E> Parser for Range<I>
     where I: RangeStream<Item=E, Range=I> + PartialEq + Positioner<Position=E::Position>
-        , E: Positioner + Clone {
+        , E: Positioner + Copy {
 
     type Input = I;
     type Output = I;
@@ -1253,14 +1253,14 @@ impl <I, E> Parser for Range<I>
 /// ```
 pub fn range<I, E>(i: I) -> Range<I>
     where I: RangeStream<Item=E, Range=I> + PartialEq + Positioner<Position=E::Position>
-        , E: Positioner + Clone {
+        , E: Positioner + Copy {
     Range(i)
 }
 
 pub struct Take<I>(usize, PhantomData<fn (I) -> I>);
 impl <I, E> Parser for Take<I>
     where I: RangeStream<Item=E>
-        , E: Positioner<Position=I::Position> + Clone {
+        , E: Positioner<Position=I::Position> + Copy {
 
     type Input = I;
     type Output = I;
@@ -1290,8 +1290,8 @@ pub fn take<I>(n: usize) -> Take<I>
 pub struct TakeWhile<I, F>(F, PhantomData<fn (I) -> I>);
 impl <I, E, F> Parser for TakeWhile<I, F>
     where I: RangeStream<Item=E>
-        , E: Positioner<Position=I::Position> + Clone
-        , F: FnMut(&I::Item) -> bool {
+        , E: Positioner<Position=I::Position> + Copy
+        , F: FnMut(I::Item) -> bool {
 
     type Input = I;
     type Output = I;
@@ -1315,14 +1315,15 @@ impl <I, E, F> Parser for TakeWhile<I, F>
 /// ```
 pub fn take_while<I, F>(f: F) -> TakeWhile<I, F>
     where I: RangeStream
-        , F: FnMut(&I::Item) -> bool {
+        , F: FnMut(I::Item) -> bool {
     TakeWhile(f, PhantomData)
 }
 
 pub struct TakeWhile1<I, F>(F, PhantomData<fn (I) -> I>);
 impl <I, F> Parser for TakeWhile1<I, F>
     where I: RangeStream
-        , F: FnMut(&I::Item) -> bool {
+        , I::Item: Copy
+        , F: FnMut(I::Item) -> bool {
 
     type Input = I;
     type Output = I;
@@ -1359,7 +1360,7 @@ impl <I, F> Parser for TakeWhile1<I, F>
 /// ```
 pub fn take_while1<I, F>(f: F) -> TakeWhile1<I, F>
     where I: RangeStream
-        , F: FnMut(&I::Item) -> bool {
+        , F: FnMut(I::Item) -> bool {
     TakeWhile1(f, PhantomData)
 }
 
@@ -1416,7 +1417,7 @@ mod tests {
 
     #[test]
     fn take_while_test() {
-        let result = take_while(|c: &char| c.is_digit(10)).parse("123abc");
+        let result = take_while(|c: char| c.is_digit(10)).parse("123abc");
         assert_eq!(result, Ok(("123", "abc")));
     }
 }

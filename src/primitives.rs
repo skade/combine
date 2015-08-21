@@ -410,7 +410,7 @@ impl <I: Stream> State<I> {
 
 impl <I, E> State<I>
     where I: RangeStream<Item=E> + Positioner<Position=E::Position>
-        , E: Positioner + Clone {
+        , E: Positioner + Copy {
     
     ///Removes `size` items from the input returning them as a range.
     ///Fails if there are fewer items than `size`
@@ -434,11 +434,11 @@ impl <I, E> State<I>
     }
 }
 
-impl <I: RangeStream> State<I> {
+impl <I: RangeStream> State<I> where I::Item: Copy {
 
     ///Removes items from the input while `predicate` returns `true`.
     pub fn uncons_while<P>(self, mut predicate: P) -> ParseResult<I, I>
-        where P: FnMut(&I::Item) -> bool {
+        where P: FnMut(I::Item) -> bool {
         let State { mut position, input, .. } = self;
         let result = input.uncons_while(|t| {
             if predicate(t) { t.update(&mut position); true }
@@ -477,7 +477,8 @@ pub trait Stream : Clone {
     fn uncons(self) -> Result<(Self::Item, Self), Error<Self::Item, Self::Range>>;
 }
 
-pub trait RangeStream: Stream + Positioner {
+pub trait RangeStream: Stream + Positioner
+where Self::Item: Copy {
     ///Takes `size` elements from the stream
     ///Fails if the length of the stream is less than `size`.
     fn uncons_range(self, size: usize) -> Result<(Self, Self), Error<Self::Item, Self::Range>>;
@@ -485,7 +486,7 @@ pub trait RangeStream: Stream + Positioner {
     ///Takes items from stream, testing each one with `predicate`
     ///returns the range of items which passed `predicate`
     fn uncons_while<F>(self, f: F) -> Result<(Self, Self), Error<Self::Item, Self::Range>>
-        where F: FnMut(&Self::Item) -> bool;
+        where F: FnMut(Self::Item) -> bool;
     ///Returns the remaining length of `self`.
     ///The returned length need not be the same as the number of items left in the stream
     fn len(&self) -> usize;
@@ -493,9 +494,9 @@ pub trait RangeStream: Stream + Positioner {
 
 impl <'a> RangeStream for &'a str {
     fn uncons_while<F>(self, mut f: F) -> Result<(&'a str, &'a str), Error<char, &'a str>>
-        where F: FnMut(&Self::Item) -> bool {
+        where F: FnMut(Self::Item) -> bool {
         let len = self.chars()
-            .take_while(|c| f(&c))
+            .take_while(|c| f(*c))
             .fold(0, |len, c| len + c.len_utf8());
         Ok((&self[..len], &self[len..]))
     }
@@ -513,8 +514,8 @@ impl <'a> RangeStream for &'a str {
 }
 
 impl <'a, T> RangeStream for &'a [T]
-where T: Positioner {
-    fn uncons_range(self, size: usize) -> Result<(&'a [T], &'a [T]), Error<&'a T, &'a [T]>> {
+where T: Positioner + Copy {
+    fn uncons_range(self, size: usize) -> Result<(&'a [T], &'a [T]), Error<T, &'a [T]>> {
         if size < self.len() {
             Ok((&self[0..size], &self[size..]))
         }
@@ -522,10 +523,10 @@ where T: Positioner {
             Err(Error::end_of_input())
         }
     }
-    fn uncons_while<F>(self, mut f: F) -> Result<(&'a [T], &'a [T]), Error<&'a T, &'a [T]>>
-        where F: FnMut(&Self::Item) -> bool {
+    fn uncons_while<F>(self, mut f: F) -> Result<(&'a [T], &'a [T]), Error<T, &'a [T]>>
+        where F: FnMut(Self::Item) -> bool {
         let len = self.iter()
-            .take_while(|c| f(&c))
+            .take_while(|c| f(**c))
             .count();
         Ok((&self[..len], &self[len..]))
     }
@@ -547,12 +548,12 @@ impl <'a> Stream for &'a str {
 }
 
 impl <'a, T> Stream for &'a [T]
-    where T: Positioner {
-    type Item = &'a T;
+    where T: Positioner + Copy {
+    type Item = T;
     type Range = &'a [T];
-    fn uncons(self) -> Result<(&'a T, &'a [T]), Error<&'a T, &'a [T]>> {
+    fn uncons(self) -> Result<(T, &'a [T]), Error<T, &'a [T]>> {
         if self.len() > 0 {
-            Ok((&self[0], &self[1..]))
+            Ok((self[0], &self[1..]))
         }
         else {
             Err(Error::end_of_input())
